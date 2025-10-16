@@ -4,8 +4,8 @@
 <dict>
 	<key>com.apple.developer.in-app-payments</key>
 	<array>
-		<string>merchant.1700002</string>
-		<string>merchant.hutko</string>
+		<string>merchant.hutko.service</string>
+		<string>merchant.1396411</string>
 	</array>
 </dict>
 </plist>
