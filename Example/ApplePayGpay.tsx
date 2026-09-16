@@ -116,6 +116,12 @@ const ApplePayGpay: React.FC = () => {
   if (webViewVisible) {
     return (
       <View style={styles.webViewContainer}>
+        <SafeAreaView>
+          <Button
+            title="Close"
+            onPress={() => cloudipspWebViewRef.current?.cancel()}
+          />
+        </SafeAreaView>
         <CloudipspWebView ref={cloudipspWebViewRef} />
       </View>
     )

@@ -1,8 +1,12 @@
 import React from 'react';
 import {Platform, StyleSheet, View} from 'react-native';
-import {WebView, WebViewNavigationEvent} from 'react-native-webview';
+import {
+  WebView,
+  WebViewErrorEvent,
+  WebViewNavigationEvent,
+} from 'react-native-webview';
 
-import {Receipt} from './models';
+import {Failure} from './models';
 import {Native} from './Native';
 
 const addViewportMeta = `(${String(() => {
@@ -33,11 +37,9 @@ type State = {status: 'idle'} | ({status: 'loading'} & LoadingState);
 export class CloudipspWebView extends React.Component<Props, State> {
   state: State = {status: 'idle'};
 
-  private readonly urlStartPattern =
-    'http://secure-redirect.cloudipsp.com/submit/#';
   private readonly webViewRef = React.createRef<WebView>();
-  private onSuccess?: (receipt: Receipt) => void;
-  private onFailure?: () => void;
+  private onSuccess?: () => void;
+  private onFailure?: (error: Failure) => void;
 
   readonly confirm = (
     baseUrl: string,
@@ -45,7 +47,7 @@ export class CloudipspWebView extends React.Component<Props, State> {
     cookies: string | null,
     apiHost: string,
     callbackUrl: string,
-  ): Promise<Receipt> => {
+  ): Promise<void> => {
     if (this.onSuccess) {
       throw new Error('CloudipspWebView already waiting for confirmation');
     }
@@ -77,35 +79,66 @@ export class CloudipspWebView extends React.Component<Props, State> {
     const {apiHost, callbackUrl} = this.state;
     const url = event.nativeEvent.url;
 
-    const detectsStartPattern = url.startsWith(this.urlStartPattern);
-    const detectsCallbackUrl = url.startsWith(callbackUrl);
-    const detectsApiToken = url.startsWith(`${apiHost}/api/checkout?token=`);
+    // Compare scheme-agnostically: the WebView reports the final redirect with
+    // its real scheme (https), while callbackUrl/apiHost may be scheme-less.
+    const stripScheme = (value: string) => value.replace(/^https?:\/\//, '');
+    const normalizedUrl = stripScheme(url);
 
-    if (detectsStartPattern || detectsCallbackUrl || detectsApiToken) {
-      this.handlePaymentSuccess(url, detectsStartPattern);
+    const detectsCallbackUrl = normalizedUrl.startsWith(stripScheme(callbackUrl));
+    const detectsCallbackPub = normalizedUrl.startsWith(
+      `${stripScheme(apiHost)}/api/checkout/callback_pub`,
+    );
+
+    if (detectsCallbackUrl || detectsCallbackPub) {
+      this.settleSuccess();
     }
   };
 
-  private handlePaymentSuccess = (url: string, isStartPattern: boolean) => {
-    let receipt: Receipt;
-
-    if (isStartPattern) {
-      const jsonOfConfirmation = url.split(this.urlStartPattern)[1];
-      let response;
-      try {
-        response = JSON.parse(jsonOfConfirmation);
-      } catch (e) {
-        response = JSON.parse(decodeURIComponent(jsonOfConfirmation));
-      }
-      receipt = Receipt.fromOrderData(response.params);
+  private readonly onError = (event: WebViewErrorEvent) => {
+    if (!this.onFailure || this.state.status !== 'loading') {
+      return;
     }
 
-    this.setState({status: 'idle'}, () => {
-      this.onSuccess!(receipt);
-      this.clearCallbacks();
-    });
+    const {description, code} = event.nativeEvent;
+    this.settleFailure(
+      new Failure(
+        description || 'WebView failed to load the confirmation page',
+        code != null ? String(code) : undefined,
+      ),
+    );
+  };
+
+  /**
+   * Cancels a confirmation in progress. Call this from the host component when
+   * the user closes the payment window (e.g. a Close button or hardware back),
+   * so the pending pay() / googlePay() / applePay() promise rejects instead of
+   * hanging. No-op when no confirmation is in progress.
+   */
+  readonly cancel = (reason: string = 'Payment window closed'): void => {
+    if (!this.onFailure || this.state.status !== 'loading') {
+      return;
+    }
+
+    this.settleFailure(new Failure(reason, 'canceled'));
+  };
+
+  private settleSuccess = () => {
+    // The receipt is intentionally not parsed from the URL here: the caller
+    // re-fetches the authoritative receipt via getOrder(token) once this
+    // resolves. We only need to signal that the 3DS step has completed.
+    // Clear callbacks synchronously first so a subsequent onError for the same
+    // (unresolvable http://callback) navigation cannot also reject.
+    const onSuccess = this.onSuccess;
+    this.clearCallbacks();
+    this.setState({status: 'idle'}, () => onSuccess?.());
 
     this.webViewRef.current?.goBack();
+  };
+
+  private settleFailure = (error: Failure) => {
+    const onFailure = this.onFailure;
+    this.clearCallbacks();
+    this.setState({status: 'idle'}, () => onFailure?.(error));
   };
 
   private clearCallbacks = () => {
@@ -130,6 +163,7 @@ export class CloudipspWebView extends React.Component<Props, State> {
         source={{baseUrl, html}}
         injectedJavaScript={addViewportMeta}
         onLoadStart={this.onLoadStart}
+        onError={this.onError}
       />
     );
   }
@@ -152,5 +186,5 @@ export interface CloudipspWebviewPrivate {
     cookies: string | null,
     apiHost: string,
     callbackUrl: string,
-  ): Promise<Receipt>;
+  ): Promise<void>;
 }
