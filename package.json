@@ -1,13 +1,29 @@
 {
   "name": "react-native-hutko-service",
   "version": "1.2.0",
-  "description": "Library for accepting payments directly from android application's clients.",
+  "description": "React Native SDK for accepting card, Google Pay and Apple Pay payments via the Hutko / Cloudipsp gateway.",
   "main": "dist/commonjs/index.js",
   "module": "dist/module/index.js",
   "react-native": "src/index.ts",
   "types": "dist/typescript/index.d.ts",
+  "files": [
+    "src",
+    "dist",
+    "android",
+    "ios",
+    "*.podspec",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "!android/build",
+    "!android/.gradle",
+    "!**/__tests__",
+    "!**/__mocks__",
+    "!**/*.test.*"
+  ],
   "scripts": {
-    "build": "bob build"
+    "build": "bob build",
+    "prepare": "bob build"
   },
   "repository": {
     "type": "git",
@@ -48,7 +64,7 @@
     "react-native": "*",
     "react-native-webview": "*"
   },
-  "author": "Maxim Kozenko",
+  "author": "Hutko",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/hutko-service/react-native-sdk/issues"
